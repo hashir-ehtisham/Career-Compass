@@ -97,6 +97,9 @@ footer {display:none !important}
 # Initialize the InferenceClient for chatbot
 client = InferenceClient("HuggingFaceH4/zephyr-7b-alpha")
 
+# Global variable to store chat history for the current session
+current_chat_history = []
+
 # Define the function for chatbot response
 def respond(
     message,
@@ -106,6 +109,8 @@ def respond(
     temperature,
     top_p,
 ):
+    global current_chat_history
+    
     messages = [{"role": "system", "content": system_message}]
 
     for val in history:
@@ -113,9 +118,11 @@ def respond(
             messages.append({"role": "user", "content": val[0]})
         if val[1]:
             messages.append({"role": "assistant", "content": val[1]})
-
+            current_chat_history.append(f"Assistant: {val[1]}")
+    
     messages.append({"role": "user", "content": message})
-
+    current_chat_history.append(f"User: {message}")
+    
     response = ""
 
     for message in client.chat_completion(
@@ -129,6 +136,23 @@ def respond(
         response += token
         yield response
 
+    # Append the assistant's final response to the history
+    current_chat_history.append(f"Assistant: {response}")
+
+def download_chat_history():
+    # Join the current chat history into a single string
+    history_str = "\n".join(current_chat_history)
+    # Save the chat history to a text file
+    with open("chat_history.txt", "w") as f:
+        f.write(history_str)
+    return "chat_history.txt"
+
+def clear_chat_history():
+    # Reset the current chat history
+    global current_chat_history
+    current_chat_history.clear()  # Clear the chat history
+    return "Chat history cleared."
+        
 def send_message(message, history, system_message, max_tokens, temperature, top_p):
     if message:
         history.append((message, ""))
@@ -204,8 +228,18 @@ with gr.Blocks(css=css) as demo:
         msg_career = gr.Textbox(label="Enter the Excel Copied Data here")
         
         with gr.Row():
-            clear_career = gr.Button("Clear")
+            clear_career = gr.Button("New Chat")
+            download_button = gr.Button("Download Chat History")
             submit_career = gr.Button("Submit")
+
+        with gr.Row():
+            download_output = gr.File(label="Download")
+            download_button.click(download_chat_history, outputs=download_output)
+
+        with gr.Row():
+            clear_button = gr.Button("Clear Chat History")
+            status_output = gr.Textbox(label="Status", interactive=False)  # Add a Textbox for status output
+            clear_button.click(clear_chat_history, outputs=status_output)  # Use the status Textbox for output
         
         with gr.Accordion("Additional Inputs", open=False):
             max_tokens_career = gr.Slider(minimum=1, maximum=2048, value=1024, step=1, label="Max new tokens")
@@ -228,7 +262,7 @@ with gr.Blocks(css=css) as demo:
             inputs=[msg_career, chatbot_career, system_message_career, max_tokens_career, temperature_career, top_p_career],
             outputs=[chatbot_career, msg_career],
         )
-
+        
         clear_career.click(lambda: None, None, chatbot_career, queue=False)
 
     # File Upload Tab
