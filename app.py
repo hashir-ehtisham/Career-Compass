@@ -1,4 +1,5 @@
 import gradio as gr
+import os
 from huggingface_hub import InferenceClient
 import pandas as pd
 
@@ -95,7 +96,10 @@ footer {display:none !important}
 """
 
 # Initialize the InferenceClient for chatbot
-client = InferenceClient("HuggingFaceH4/zephyr-7b-alpha")
+client = InferenceClient(
+    model="microsoft/phi-4",
+    token=os.getenv("HF_TOKEN1")
+)
 
 # Global variable to store chat history for the current session
 current_chat_history = []
@@ -193,29 +197,28 @@ with gr.Blocks(css=css) as demo:
             gr.Image(image_url, elem_id="compass-image")
         
         gr.Markdown("# **Career Compass**")
-        gr.Markdown("### **Developed by Hashir (A student of APS DHA II Sec -D)**")
+        gr.Markdown("### **Developed by Hashir Ehtisham**")
         gr.Markdown("""
         **Career Compass** is a cutting-edge AI-powered tool designed to provide personalized career guidance based on students' academic performance and extracurricular activities. The key features of this tool include:
         - **Personalized Analysis:** Delivers career advice tailored to individual student profiles.
         - **Streamlined Interface:** Simple and intuitive user experience.
         - **Detailed Reports:** Offers insights into suitable career paths, relevant universities, and job opportunities.
-        - **Aptitude Test:** Take the Aptitude Test to determine your interest and find out the relevent field.
+        - **General Guidance & Emotional Support:** Talk to AI for General Career Guidance and also lighten your mood. 
         **Libraries Used:**
         - **Gradio:** For creating the user interface.
         - **Pandas:** For reading and analyzing Excel files.
-        - **Hugging API and LLM:** Zephyr-7b-beta For utilizing state-of-the-art language models.
+        - **LLM model:** Microsoft's phi-4 For utilizing state-of-the-art language models.
         
         **How It Works:**
         - **Detailed Analysis**
         1. Upload your academic records.
         2. Input your query regarding career guidance.
-        3. Get detailed recommendations and potential career paths!
-         - **Aptitude test**
-        1. Or choose to take "Aptitude test"
-        2. Click on "generate an aptitude test for me (10 questions)"
-        3. After that, 10 questions would appear.
-        4. Answer those questions and submit the response.
-        5. Get the AI analyzed answer and recommendations and potential career paths!
+        3. Get detailed recommendations and potential career paths.
+        4. Download the Report!
+         - **General Guidance & Emotional Support**
+        1. Enter your query and doubts about choosing University majors and Chatbot will guide you about the right choice.
+        2. Ask about Career Opportunities and scope of different fields to get unbaised AI analyzed answer and recommendations and potential career paths!
+        3. IF you ever feel sad, anxious or depressed, talk to Career Compass and it will console you like a friend.
         """)
     
     # Detailed Analysis Tab
@@ -268,66 +271,14 @@ with gr.Blocks(css=css) as demo:
     # File Upload Tab
     with gr.Tab("Upload Data"):
         gr.Markdown("# Upload Data")
+        gr.Markdown("Upload your academic record along with extracurricular activities here and then copy & paste it in Detailed Analysis Tab.\n<div style='color: green;'>Don't worry if your extracted data appears a bit strange. 😉 </div> \n<div style='color: green;'>Developed by Hashir Ehtisham</div>")
         file_input = gr.File(label="Upload Excel file")
         excel_output = gr.Textbox(label="Excel Content")
         file_input.change(read_excel, inputs=file_input, outputs=excel_output)
-    
-    # Aptitude Test Tab
-    with gr.Tab("Aptitude Test"):
-        gr.Markdown("# Aptitude Test")
-        gr.Markdown("""
-        Take the Aptitude Test to determine your interest and find out your interests towards different professional fields.
-        <div style='color: gray;'>After generating the test, use the format e.g 1c,2b,3a,4c and more to answer the questions</div>
-        <div style='color: green;'>Developed by Hashir Ehtisham</div>
-        """)
-
-        system_message_aptitude = gr.Textbox(value="You are an Aptitude Test Chatbot. Generate detailed mcq based questions and answers to determine that in what professional field does the the interest of student lies. Must include questions about Medical, engineering, computer science, arts and finance", visible=False)
-        chatbot_aptitude = gr.Chatbot()
-        msg_aptitude = gr.Textbox(label="Your message")
-
-        with gr.Row():
-            clear_aptitude = gr.Button("Clear")
-            submit_aptitude = gr.Button("Submit")
-            example_button = gr.Button("Generate Aptitude Test (10 questions)")
-
-        with gr.Accordion("Additional Inputs", open=False):
-            max_tokens_aptitude = gr.Slider(minimum=1, maximum=4096, value=2048, step=1, label="Max new tokens")
-            temperature_aptitude = gr.Slider(minimum=0.1, maximum=4.0, value=0.7, step=0.1, label="Temperature")
-            top_p_aptitude = gr.Slider(minimum=0.1, maximum=1.0, value=0.95, step=0.05, label="Top-p (nucleus sampling)")
-
-        def respond_wrapper_aptitude(message, chat_history, system_message_val, max_tokens_val, temperature_val, top_p_val):
-            chat_history, _ = send_message(
-                message=message,
-                history=chat_history,
-                system_message=system_message_val,
-                max_tokens=max_tokens_val,
-                temperature=temperature_val,
-                top_p=top_p_val,
-            )
-            return gr.update(value=""), chat_history
-
-        def copy_to_message():
-            return gr.update(value="Create a 10-question aptitude test designed to assess a student's interests in various academic fields such as Engineering, Medicine, Computer Science, Law, Finance and Arts. Each question should be multiple-choice with six options, and should ask the student about their preferences, interests, or inclinations towards activities, subjects, or scenarios related to these fields. Avoid questions that require prior knowledge in any specific subject. The test should be suitable for high school students exploring potential career paths.")
-        submit_aptitude.click(
-            respond_wrapper_aptitude,
-            inputs=[
-                msg_aptitude,
-                chatbot_aptitude,
-                system_message_aptitude,
-                max_tokens_aptitude,
-                temperature_aptitude,
-                top_p_aptitude,
-            ],
-            outputs=[chatbot_aptitude],
-        )
-        msg_aptitude.submit(respond_wrapper_aptitude, [msg_aptitude, chatbot_aptitude, system_message_aptitude, max_tokens_aptitude, temperature_aptitude, top_p_aptitude], [msg_aptitude, chatbot_aptitude])
-
-        clear_aptitude.click(lambda: None, None, chatbot_aptitude, queue=False)
-        example_button.click(copy_to_message, [], [msg_aptitude])
 
     # Simple Chatbot Tab (new tab integration)
-    with gr.Tab("General Guidance"):
-        gr.Markdown("# General Guidance")
+    with gr.Tab("General Guidance & Emotional Support"):
+        gr.Markdown("# General Guidance & Emotional Support")
         gr.Markdown("""
         A compassionate career counseling chatbot providing personalized guidance on career paths and emotional support for your journey.
         <div style='color: green;'>Developed by Hashir Ehtisham</div>
