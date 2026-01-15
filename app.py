@@ -95,38 +95,39 @@ footer {display:none !important}
 }
 """
 
-# Initialize the InferenceClient for chatbot
-client = InferenceClient(
-    model="microsoft/phi-4",
-    token=os.getenv("HF_TOKEN1")
-)
-
 # Global variable to store chat history for the current session
 current_chat_history = []
 
 # Define the function for chatbot response
 def respond(
     message,
-    history,
+    history,  # gr.ChatInterface uses list of dicts format
     system_message,
     max_tokens,
     temperature,
     top_p,
+    hf_token: gr.OAuthToken,
 ):
     global current_chat_history
     
+    # Build messages list for the API
     messages = [{"role": "system", "content": system_message}]
-
-    for val in history:
-        if val[0]:
-            messages.append({"role": "user", "content": val[0]})
-        if val[1]:
-            messages.append({"role": "assistant", "content": val[1]})
-            current_chat_history.append(f"Assistant: {val[1]}")
     
+    # Add conversation history (gr.ChatInterface uses list of dicts format)
+    for msg in history:
+        messages.append(msg)
+        # Also add to our text history for download
+        if msg["role"] == "user":
+            current_chat_history.append(f"User: {msg['content']}")
+        elif msg["role"] == "assistant":
+            current_chat_history.append(f"Assistant: {msg['content']}")
+    
+    # Add current message
     messages.append({"role": "user", "content": message})
     current_chat_history.append(f"User: {message}")
-    
+
+    client = InferenceClient(token=hf_token.token, model="openai/gpt-oss-20b")
+
     response = ""
 
     for message in client.chat_completion(
@@ -136,7 +137,11 @@ def respond(
         temperature=temperature,
         top_p=top_p,
     ):
-        token = message.choices[0].delta.content
+        choices = message.choices
+        token = ""
+        if len(choices) and choices[0].delta.content:
+            token = choices[0].delta.content
+
         response += token
         yield response
 
@@ -156,41 +161,52 @@ def clear_chat_history():
     global current_chat_history
     current_chat_history.clear()  # Clear the chat history
     return "Chat history cleared."
-        
-def send_message(message, history, system_message, max_tokens, temperature, top_p):
-    if message:
-        history.append((message, ""))
-        response = respond(
-            message=message,
-            history=history,
-            system_message=system_message,
-            max_tokens=max_tokens,
-            temperature=temperature,
-            top_p=top_p,
-        )
-        response_text = ""
-        for r in response:
-            response_text = r
-        # Apply HTML formatting to headings
-        formatted_response_text = response_text.replace(
-            "Student's Primary Interest with Reason:", "<h2><strong>Student's Primary Interest with Reason</strong></h2>"
-        ).replace(
-            "Career Opportunities in the field:", "<h2><strong>Career Opportunities in the field</strong></h2>"
-        ).replace(
-            "Universities in Pakistan for related field:", "<h2><strong>Universities in Pakistan for related field</strong></h2>"
-        ).replace(
-            "Conclusion with name of field:", "<h2><strong>Conclusion with name of field</strong></h2>"
-        )
-        history[-1] = (message, formatted_response_text)
-    return history, gr.update(value="")
 
 # Excel reading function
 def read_excel(file):
     df = pd.read_excel(file.name)
     return df.to_string()
 
+# Create the main chatbot interface using gr.ChatInterface for the Detailed Analysis tab
+def create_career_chatbot():
+    return gr.ChatInterface(
+        respond,
+        type="messages",
+        additional_inputs=[
+            gr.Textbox(value=system_message, label="System message", visible=False),
+            gr.Slider(minimum=1, maximum=2048, value=1024, step=1, label="Max new tokens", visible=False),
+            gr.Slider(minimum=0.1, maximum=4.0, value=0.7, step=0.1, label="Temperature", visible=False),
+            gr.Slider(minimum=0.1, maximum=1.0, value=0.95, step=0.05, label="Top-p (nucleus sampling)", visible=False),
+        ],
+    )
+
+# Create the simple chatbot interface for General Guidance tab
+def create_simple_chatbot():
+    return gr.ChatInterface(
+        respond,
+        type="messages",
+        additional_inputs=[
+            gr.Textbox(value="You are an AI powered chatbot named as Career Compass built by Hashir Ehtisham who is a Computer Engineering student of NUST CEME to help students, teachers, and parents find the best career paths based on students' interests and academic performance.", 
+                      label="System message", visible=False),
+            gr.Slider(minimum=1, maximum=2048, value=1024, step=1, label="Max new tokens", visible=False),
+            gr.Slider(minimum=0.1, maximum=4.0, value=0.7, step=0.1, label="Temperature", visible=False),
+            gr.Slider(minimum=0.1, maximum=1.0, value=0.95, step=0.05, label="Top-p (nucleus sampling)", visible=False),
+        ],
+    )
+
 # Create the Gradio interface
 with gr.Blocks(css=css) as demo:
+    # Add login button to sidebar
+    with gr.Sidebar():
+        gr.LoginButton()
+        download_button = gr.Button("Download Chat History")
+        clear_button = gr.Button("Clear Chat History")
+        status_output = gr.Textbox(label="Status", interactive=False)
+        download_output = gr.File(label="Download")
+        
+        download_button.click(download_chat_history, outputs=download_output)
+        clear_button.click(clear_chat_history, outputs=status_output)
+    
     # Introduction Tab
     with gr.Tab("Career Compass"):
         with gr.Row(elem_id="image-container"):
@@ -204,10 +220,6 @@ with gr.Blocks(css=css) as demo:
         - **Streamlined Interface:** Simple and intuitive user experience.
         - **Detailed Reports:** Offers insights into suitable career paths, relevant universities, and job opportunities.
         - **General Guidance & Emotional Support:** Talk to AI for General Career Guidance and also lighten your mood. 
-        **Libraries Used:**
-        - **Gradio:** For creating the user interface.
-        - **Pandas:** For reading and analyzing Excel files.
-        - **LLM model:** Microsoft's phi-4 For utilizing state-of-the-art language models.
         
         **How It Works:**
         - **Detailed Analysis**
@@ -215,113 +227,31 @@ with gr.Blocks(css=css) as demo:
         2. Input your query regarding career guidance.
         3. Get detailed recommendations and potential career paths.
         4. Download the Report!
-         - **General Guidance & Emotional Support**
-        1. Enter your query and doubts about choosing University majors and Chatbot will guide you about the right choice.
-        2. Ask about Career Opportunities and scope of different fields to get unbaised AI analyzed answer and recommendations and potential career paths!
-        3. IF you ever feel sad, anxious or depressed, talk to Career Compass and it will console you like a friend.
+        - **General Guidance & Emotional Support**
+        1. Enter your query and doubts about choosing University majors.
+        2. Ask about Career Opportunities and scope of different fields.
+        3. Get unbiased AI analyzed answers and recommendations!
         """)
     
     # Detailed Analysis Tab
     with gr.Tab("Detailed Analysis"):
         gr.Markdown("# Detailed Analysis")
-        gr.Markdown("Get personalized career guidance based on academic performance and extracurricular activities with Detailed Analysis.\n<div style='color: green;'>Developed by Hashir Ehtisham</div>")
-        
-        system_message_career = gr.Textbox(value=system_message, visible=False)
-        chatbot_career = gr.Chatbot()
-        msg_career = gr.Textbox(label="Enter the Excel Copied Data here")
-        
-        with gr.Row():
-            clear_career = gr.Button("New Chat")
-            download_button = gr.Button("Download Chat History")
-            submit_career = gr.Button("Submit")
-
-        with gr.Row():
-            download_output = gr.File(label="Download")
-            download_button.click(download_chat_history, outputs=download_output)
-
-        with gr.Row():
-            clear_button = gr.Button("Clear Chat History")
-            status_output = gr.Textbox(label="Status", interactive=False)  # Add a Textbox for status output
-            clear_button.click(clear_chat_history, outputs=status_output)  # Use the status Textbox for output
-        
-        with gr.Accordion("Additional Inputs", open=False):
-            max_tokens_career = gr.Slider(minimum=1, maximum=2048, value=1024, step=1, label="Max new tokens")
-            temperature_career = gr.Slider(minimum=0.1, maximum=4.0, value=0.7, step=0.1, label="Temperature")
-            top_p_career = gr.Slider(minimum=0.1, maximum=1.0, value=0.95, step=0.05, label="Top-p (nucleus sampling)")
-
-        def respond_wrapper_career(message, chat_history, system_message_val, max_tokens_val, temperature_val, top_p_val):
-            chat_history, _ = send_message(
-                message=message,
-                history=chat_history,
-                system_message=system_message_val,
-                max_tokens=max_tokens_val,
-                temperature=temperature_val,
-                top_p=top_p_val,
-            )
-            return gr.update(value=chat_history), gr.update(value="")
-
-        submit_career.click(
-            respond_wrapper_career,
-            inputs=[msg_career, chatbot_career, system_message_career, max_tokens_career, temperature_career, top_p_career],
-            outputs=[chatbot_career, msg_career],
-        )
-        
-        clear_career.click(lambda: None, None, chatbot_career, queue=False)
-
+        gr.Markdown("Get personalized career guidance based on academic performance and extracurricular activities.\n<div style='color: green;'>Developed by Hashir Ehtisham</div>")
+        career_chatbot = create_career_chatbot()
+    
     # File Upload Tab
     with gr.Tab("Upload Data"):
         gr.Markdown("# Upload Data")
-        gr.Markdown("Upload your academic record along with extracurricular activities here and then copy & paste it in Detailed Analysis Tab.\n<div style='color: green;'>Don't worry if your extracted data appears a bit strange. 😉 </div> \n<div style='color: green;'>Developed by Hashir Ehtisham</div>")
+        gr.Markdown("Upload your academic record along with extracurricular activities here.\n<div style='color: green;'>Don't worry if your extracted data appears a bit strange. 😉 </div> \n<div style='color: green;'>Developed by Hashir Ehtisham</div>")
         file_input = gr.File(label="Upload Excel file")
         excel_output = gr.Textbox(label="Excel Content")
         file_input.change(read_excel, inputs=file_input, outputs=excel_output)
 
-    # Simple Chatbot Tab (new tab integration)
+    # Simple Chatbot Tab
     with gr.Tab("General Guidance & Emotional Support"):
         gr.Markdown("# General Guidance & Emotional Support")
-        gr.Markdown("""
-        A compassionate career counseling chatbot providing personalized guidance on career paths and emotional support for your journey.
-        <div style='color: green;'>Developed by Hashir Ehtisham</div>
-        """)
+        gr.Markdown("A compassionate career counseling chatbot providing personalized guidance on career paths and emotional support. \n<div style='color: green;'>Developed by Hashir Ehtisham</div>")
+        simple_chatbot = create_simple_chatbot()
 
-        system_message_simple = gr.Textbox(value="You are an AI powered chatbot named as Career Compass built by Hashir Ehtisham who is a student of APS DHA II Sec -D to help students, teachers, and parents find the best career paths based on students' interests and academic performance.", visible=False)
-        chatbot_simple = gr.Chatbot()
-        msg_simple = gr.Textbox(label="Type a message")
-        
-        with gr.Row():
-            clear_simple = gr.Button("Clear")
-            submit_simple = gr.Button("Submit")
-        
-        with gr.Accordion("Additional Inputs", open=False):
-            max_tokens_simple = gr.Slider(minimum=1, maximum=2048, value=1024, step=1, label="Max new tokens")
-            temperature_simple = gr.Slider(minimum=0.1, maximum=4.0, value=0.7, step=0.1, label="Temperature")
-            top_p_simple = gr.Slider(minimum=0.1, maximum=1.0, value=0.95, step=0.05, label="Top-p (nucleus sampling)")
-        
-        def respond_wrapper_simple(message, chat_history, system_message_val, max_tokens_val, temperature_val, top_p_val):
-            chat_history, _ = send_message(
-                message=message,
-                history=chat_history,
-                system_message=system_message_val,
-                max_tokens=max_tokens_val,
-                temperature=temperature_val,
-                top_p=top_p_val,
-            )
-            return chat_history
-
-        submit_simple.click(
-            respond_wrapper_simple,
-            inputs=[
-                msg_simple,
-                chatbot_simple,
-                system_message_simple,
-                max_tokens_simple,
-                temperature_simple,
-                top_p_simple,
-            ],
-            outputs=[chatbot_simple],
-        )
-
-        clear_simple.click(lambda: None, None, chatbot_simple)
-
-# Launch the Gradio app
-demo.launch()
+if __name__ == "__main__":
+    demo.launch()
