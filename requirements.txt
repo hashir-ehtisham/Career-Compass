@@ -1,5 +1,5 @@
-numpy==1.24.4
-pandas==2.0.3
-gradio==3.27.0
-huggingface_hub==0.22.2
-openpyxl==3.1.2
+numpy
+pandas
+gradio
+huggingface_hub
+openpyxl
